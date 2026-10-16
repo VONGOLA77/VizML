@@ -6,6 +6,7 @@
 import numpy as np
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.linear_model import Perceptron
+from backend.model_parameters import create_classifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.model_selection import train_test_split
@@ -69,25 +70,14 @@ class NeuralNetworkAlgorithms:
         # 创建模型
         if network_type == 'perceptron':
             # 单层感知机
-            model = Perceptron(
-                max_iter=max_iter,
-                eta0=learning_rate_init,
-                random_state=42
-            )
+            model = create_classifier("mlp", dict(network_type="perceptron",
+                                      max_iter=max_iter, learning_rate_init=learning_rate_init))
             training_history = self._train_perceptron_with_history(model, X_train, y_train, X_test, y_test, max_iter)
         elif task_type == 'classification':
             # 多层感知机分类
-            model = MLPClassifier(
-                hidden_layer_sizes=hidden_layer_sizes,
-                activation=activation,
-                solver=solver,
-                learning_rate_init=learning_rate_init,
-                max_iter=max_iter,
-                batch_size=batch_size,
-                alpha=alpha,
-                random_state=42,
-                warm_start=True  # 允许增量训练以记录历史
-            )
+            model = create_classifier("mlp", dict(network_type="mlp", hidden_layer_sizes=hidden_layer_sizes,
+                                      activation=activation, solver=solver, learning_rate_init=learning_rate_init,
+                                      max_iter=max_iter, batch_size=batch_size, alpha=alpha), warm_start=True)
             training_history = self._train_mlp_with_history(model, X_train, y_train, X_test, y_test, max_iter, task_type)
         else:
             # 多层感知机回归

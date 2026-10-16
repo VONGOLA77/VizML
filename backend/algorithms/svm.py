@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 import logging
 
 from .base import BaseClassificationAlgorithm
+from backend.model_parameters import create_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -51,22 +52,10 @@ class SVMAlgorithm(BaseClassificationAlgorithm):
         if scale_features:
             X_train, X_test = self.scale_features(X_train, X_test)
         
-        # 处理gamma参数
-        if isinstance(gamma, str) and gamma == 'scale':
-            gamma = 1.0 / (X.shape[1] * X.var())
-        elif isinstance(gamma, str) and gamma == 'auto':
-            gamma = 1.0 / X.shape[1]
-        
         # 创建并训练模型
-        model = SVC(
-            kernel=kernel,
-            C=C,
-            gamma=gamma,
-            degree=int(degree),
-            coef0=float(coef0),
-            probability=True,  # 启用概率预测
-            random_state=42
-        )
+        model = create_classifier("svm", dict(kernel=kernel, C=C, gamma=gamma, degree=degree,
+                                  coef0=coef0, max_iter=kwargs.get("max_iter", -1),
+                                  tol=kwargs.get("tol", 0.001)))
         model.fit(X_train, y_train)
         
         # 预测和评估

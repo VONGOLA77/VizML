@@ -35,6 +35,8 @@ from backend.algorithms.bayesian_classification import BayesianClassificationAlg
 from backend.algorithms.linear_regression import LinearRegressionAlgorithm
 from backend.algorithms.sgd import SGDAlgorithm
 from backend.algorithms.reinforcement_learning import ReinforcementLearningAlgorithm, build_environment
+from backend.arena.api import blueprint as arena_blueprint
+from backend.model_parameters import create_classifier
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -45,6 +47,7 @@ app = Flask(__name__,
             template_folder='frontend/templates',
             static_folder='frontend/static')
 CORS(app)  # 启用CORS支持前后端分离
+app.register_blueprint(arena_blueprint)
 
 # 全局变量存储当前会话的模型和数据
 session_data = {
@@ -1769,29 +1772,9 @@ def train_neural_network_step():
             # 创建模型但不完全训练
             network_type = params.get('network_type', 'mlp')
             
-            if network_type == 'perceptron':
-                from sklearn.linear_model import Perceptron
-                model = Perceptron(
-                    max_iter=10,  # 初始少量迭代
-                    eta0=params.get('learning_rate_init', 0.001),
-                    random_state=42
-                )
-            else:
-                from sklearn.neural_network import MLPClassifier
-                hidden_layer_sizes = params.get('hidden_layer_sizes', (100, 50))
-                if isinstance(hidden_layer_sizes, str):
-                    hidden_layer_sizes = tuple(map(int, hidden_layer_sizes.split(',')))
-                
-                model = MLPClassifier(
-                    hidden_layer_sizes=hidden_layer_sizes,
-                    activation=params.get('activation', 'relu'),
-                    solver=params.get('solver', 'adam'),
-                    learning_rate_init=params.get('learning_rate_init', 0.001),
-                    max_iter=10,  # 初始少量迭代
-                    alpha=params.get('alpha', 0.0001),
-                    random_state=42,
-                    warm_start=True
-                )
+            # Same classifier construction as native training and Arena.
+            model = create_classifier("mlp", dict(params, network_type=network_type,
+                                      max_iter=10), warm_start=True)
             
             # 初始训练
             model.fit(X_train, y_train)
