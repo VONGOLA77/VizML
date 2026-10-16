@@ -30,6 +30,9 @@ class TimelineTests(unittest.TestCase):
                 self.assertAlmostEqual(frame["elapsed_ms"], elapsed)
                 self.assertAlmostEqual(frame["model"]["observation"]["timing"]["step_ms"], frame["duration_ms"])
             self.assertAlmostEqual(track["duration_ms"], elapsed)
+            self.assertGreaterEqual(track["recording_ms"], track["duration_ms"])
+        self.assertGreaterEqual(self.record["timeline"]["recording_ms"],
+                                sum(t["recording_ms"] for t in self.record["tracks"].values()))
         self.assertEqual(self.record["timeline"]["duration_ms"], max(t["duration_ms"] for t in self.record["tracks"].values()))
         self.assertFalse(self.record["timeline"]["ranked"])
 
@@ -74,13 +77,14 @@ class TimelineTests(unittest.TestCase):
         with patch.object(timeline, 'perf_counter', side_effect=now), patch.object(timeline, 'describe_stage', side_effect=expensive_encoding):
             result = record_timeline(dict(self.payload, steps=2))
         for track in result["tracks"].values():
+            self.assertGreater(track["recording_ms"], 500000)
             self.assertAlmostEqual(track["setup_ms"], 1)
             for frame in track["frames"]:
                 self.assertAlmostEqual(frame["duration_ms"], 1)
             self.assertAlmostEqual(track["duration_ms"], 1 + len(track["frames"]))
 
     def test_limits_and_data_validation_are_not_silent(self):
-        for value in (0, -1, 1.5, True, 201, "10"):
+        for value in (0, -1, 1.5, True, 1001, "10"):
             with self.assertRaises(ValueError):
                 record_timeline(dict(self.payload, steps=value))
         payload = copy.deepcopy(self.payload)
@@ -115,7 +119,15 @@ class TimelineTests(unittest.TestCase):
             data = response.get_json()
             self.assertIn('mesh_prediction', data["timeline"]["excludes"])
             self.assertEqual(data["version"], 4)
-            self.assertEqual(client.post('/api/arena/timeline', json=dict(self.payload, steps=201)).status_code, 400)
+            self.assertEqual(data["timeline"]["max_steps"], 1000)
+            response = client.post('/api/arena/timeline', json=dict(
+                self.payload, steps=1000, selected_models=["knn", "bayes"]))
+            self.assertEqual(response.status_code, 200)
+            extended = response.get_json()
+            self.assertEqual(extended["timeline"]["steps"], 1000)
+            self.assertEqual(len(extended["tracks"]["knn"]["frames"]), 5)
+            self.assertEqual(len(extended["tracks"]["bayes"]["frames"]), 5)
+            self.assertEqual(client.post('/api/arena/timeline', json=dict(self.payload, steps=1001)).status_code, 400)
 
 
 if __name__ == '__main__':

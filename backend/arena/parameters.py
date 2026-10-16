@@ -1,7 +1,7 @@
-"""Shared classifier construction and the Arena's complete lab-parameter catalogue.
+"""Arena-only classifiers and parameter adapters matching the native lab controls.
 
-Only model creation is shared: legacy labs keep their teaching workflows, while
-Arena owns a single split and fits all preprocessing on training samples only.
+Legacy labs are deliberately untouched. Arena owns its classifier construction,
+single split and training-only preprocessing; no legacy endpoint depends on it.
 """
 import math
 
@@ -191,7 +191,7 @@ def feature_choice(value, forest=False):
 
 
 def create_classifier(key, config, seed=42, warm_start=False):
-    """Used by both native labs and Arena. No splitting/scaling/training here."""
+    """Create an Arena estimator without changing native lab implementations."""
     p = dict(defaults(key), **config)
     if key == "svm":
         return SVC(kernel=p["kernel"], C=p["C"], gamma=p["gamma"], degree=int(p["degree"]),
@@ -209,7 +209,7 @@ def create_classifier(key, config, seed=42, warm_start=False):
         return GaussianNB(var_smoothing=p["var_smoothing"], priors=p["priors"])
     if p["network_type"] == "perceptron":
         return Perceptron(max_iter=p["max_iter"], eta0=p["learning_rate_init"], random_state=seed)
-    # Arena limits belong to normalization, not to native labs' model creation.
+    # Public Arena input is bounded by normalize_parameters before construction.
     hidden = layer_sizes(p["hidden_layer_sizes"], bounded=False)
     return MLPClassifier(hidden_layer_sizes=hidden, activation=p["activation"], solver=p["solver"],
                          learning_rate_init=p["learning_rate_init"], max_iter=p["max_iter"],

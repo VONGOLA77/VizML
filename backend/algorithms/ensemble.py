@@ -23,7 +23,6 @@ from sklearn.svm import SVC, SVR
 from sklearn.linear_model import LogisticRegression, LinearRegression
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.naive_bayes import GaussianNB
-from backend.model_parameters import create_classifier
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.metrics import accuracy_score, mean_squared_error
 import logging
@@ -272,9 +271,14 @@ class EnsembleAlgorithms:
         max_features = kwargs.get('max_features', 'sqrt' if task_type == 'classification' else 'auto')
         
         if task_type == 'classification':
-            model = create_classifier("forest", dict(n_estimators=n_estimators, max_depth=max_depth,
-                                      min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf,
-                                      max_features=max_features))
+            model = RandomForestClassifier(
+                n_estimators=n_estimators,
+                max_depth=max_depth,
+                min_samples_split=min_samples_split,
+                min_samples_leaf=min_samples_leaf,
+                max_features=max_features,
+                random_state=42
+            )
         else:
             model = RandomForestRegressor(
                 n_estimators=n_estimators,

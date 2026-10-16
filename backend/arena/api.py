@@ -4,7 +4,7 @@ from werkzeug.exceptions import BadRequest, RequestEntityTooLarge
 from .engine import generate, prepare, fit_experiment
 from .observation import fit_observation
 from .timeline import record_timeline
-from backend.model_parameters import PARAMETERS
+from .parameters import PARAMETERS
 
 blueprint = Blueprint("arena", __name__, url_prefix="/api/arena")
 

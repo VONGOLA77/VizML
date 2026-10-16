@@ -8,7 +8,7 @@ from unittest.mock import patch
 import numpy as np
 
 from backend.arena.engine import fit_experiment, generate, models_for, estimator_input
-from backend.model_parameters import PARAMETERS, create_classifier, normalize_parameters
+from backend.arena.parameters import PARAMETERS, create_classifier, normalize_parameters
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -115,11 +115,11 @@ class ParameterParityTests(unittest.TestCase):
         self.assertEqual(model.steps[-1][1].priors, [0.7, 0.3])
         self.assertEqual(model.steps[-1][1].var_smoothing, 1e-8)
 
-    def test_native_feature_aliases_and_unbounded_native_architecture(self):
+    def test_feature_aliases_and_arena_normalization_limits(self):
         for model in ("tree", "forest"):
             for value in (None, "None", "1.0", 1.0):
                 self.assertEqual(normalize_parameters(model, {"max_features": value})["max_features"], "all")
-        # The Arena's documented compute cap must not restrict old lab APIs.
+        # Validation bounds public Arena input, not raw estimator construction.
         self.assertEqual(create_classifier("mlp", {"hidden_layer_sizes": "512"}).hidden_layer_sizes, (512,))
         with self.assertRaises(ValueError):
             normalize_parameters("mlp", {"hidden_layer_sizes": "512"})
@@ -192,19 +192,20 @@ class ActualParameterExperimentTests(unittest.TestCase):
             self.assertNotIn("probabilities", explanation)
 
 
-class NativeConstructionTests(unittest.TestCase):
-    def test_native_labs_import_the_same_constructor(self):
+class ModuleIsolationTests(unittest.TestCase):
+    def test_native_labs_do_not_depend_on_arena_constructor(self):
         from backend.algorithms import svm, knn, decision_tree, bayesian_classification, neural_network, ensemble
         for module in (svm, knn, decision_tree, bayesian_classification, neural_network, ensemble):
-            self.assertIs(module.create_classifier, create_classifier)
+            self.assertFalse(hasattr(module, 'create_classifier'))
 
-    def test_native_svm_honors_iteration_limit_and_tolerance(self):
-        from backend.algorithms.svm import SVMAlgorithm
+    def test_arena_svm_honors_iteration_limit_and_tolerance(self):
         points = generate({"count": 40})["points"]
         X, y = np.array([[p["x"], p["y"]] for p in points]), np.array([p["label"] for p in points])
-        result = SVMAlgorithm().train_model(X, y, kernel="poly", gamma="scale", degree=4,
-                                          coef0=0.3, max_iter=2200, tol=0.002)
-        self.assertEqual((result["model"].kernel, result["model"].max_iter, result["model"].tol),
+        model = models_for({'svm': dict(kernel="poly", gamma="scale", degree=4,
+                                       coef0=0.3, max_iter=2200, tol=0.002)}, 42, len(X))['svm']
+        model.fit(X, y)
+        estimator, _, _ = estimator_input(model, X)
+        self.assertEqual((estimator.kernel, estimator.max_iter, estimator.tol),
                          ("poly", 2200, 0.002))
 
 

@@ -23,7 +23,7 @@
         compare: false, divider: 0.5, valid: false, requestCount: 0,
         schema: null, parametersReady: false, parametersValid: false, parameterSignature: null,
         finalResult: null, checkpoints: new Map(), playback: null, recording: false,
-        selectedModels: [...keys]
+        selectedModels: [...keys], recordingProfiles: {}, recordingEstimate: null, recordingEstimateKey: null
     };
     const activeKeys=()=>keys.filter(key=>state.selectedModels.includes(key));
     const canvases = {data: $('data'), ...Object.fromEntries(keys.map(k => [k, $('plot-' + k)]))};
@@ -260,6 +260,7 @@
     }
     function buttonState() {
         playbackControls();
+        updateRecordingEstimate();
         $('run').disabled = state.busy || !state.valid || !state.parametersReady || !state.parametersValid;
         const count=activeKeys().length;
         $('run').textContent = state.busy ? count+' 个模型计算中…' : state.result ? '重新对决 · 更新 '+count+' 个边界 →' : '开始 '+count+' 模型对决 →';
@@ -284,7 +285,7 @@
         keys.forEach(k => {
             const tag = root.querySelector('[data-model="' + k + '"] .arena-stale-tag');
             tag.hidden = Boolean(fresh() && state.result.models[k]);
-            tag.textContent = fresh() && state.result?.observation?.timeline ? '准备中 · 尚未完成第 1 步' : state.result ? '旧边界 · 需要重新训练' : '等待真实训练';
+            tag.textContent = fresh() && state.result?.observation?.timeline ? '第一步进行中' : state.result ? '旧边界 · 需要重新训练' : '等待真实训练';
             const summary = root.querySelector('[data-model="' + k + '"] .arena-effective-params summary');
             summary.textContent = fresh() ? '本轮实际生效参数' : state.result ? '上一轮参数 · 已过期' : '训练后查看实际参数';
             if (!fresh()) {
@@ -557,19 +558,67 @@
         renderPlayback(true);schedulePlayback();
         status('按各算法实测耗时独立播放，可暂停、拖动时间轴或实时修改倍率。');
     }
+    function recordingSignature(key, input) {
+        return JSON.stringify({points:input.points,seed:input.seed,test_size:input.test_size,
+            challenge:input.challenge,params:input.params[key]});
+    }
+    function updateRecordingEstimate() {
+        const estimateKey=JSON.stringify([$('play-steps').value,state.version,state.parameterSignature,
+            state.parametersReady,state.parametersValid,state.valid,
+            activeKeys().map(key=>[key,state.recordingProfiles[key]?.track.recording_ms])]);
+        if(state.recordingEstimateKey===estimateKey)return;
+        state.recordingEstimateKey=estimateKey;
+        const summary=$('record-estimate-summary'), note=$('record-estimate-note'), models=$('record-estimate-models');
+        state.recordingEstimate=null;
+        models.replaceChildren();
+        note.textContent='包含训练、边界预测与快照整理，不含网络传输及动画播放时间；倍率不影响记录等待。输入时不会发起训练。';
+        if(!state.parametersReady){summary.textContent='预计记录等待：正在加载参数…';return;}
+        if(!state.valid || !state.parametersValid){summary.textContent='预计记录等待：请先补全有效数据和模型参数';return;}
+        const steps=numeric('play-steps');
+        if(!$('play-steps').value.trim() || !Number.isInteger(steps) || steps<1 || steps>1000){
+            summary.textContent='预计记录等待：请输入 1～1000 的整数步数';return;
+        }
+        const input=payload(), profiles={};
+        activeKeys().forEach(key=>{
+            const cached=state.recordingProfiles[key];
+            if(cached?.signature===recordingSignature(key,input))profiles[key]=cached.track;
+        });
+        const estimate=window.ArenaTimelineClock.estimateRecording({steps,models:activeKeys(),params:input.params,
+            pointCount:state.base.length,trainCount:Math.max(2,Math.floor(state.base.length*(1-input.test_size))),profiles});
+        state.recordingEstimate=estimate;
+        const duration=ms=>ms<1000?'不足 1 秒':ms<60000?(ms/1000).toFixed(1)+' 秒':(ms/60000).toFixed(1)+' 分钟';
+        const range=(low,high)=>high<1000?'不足 1 秒':duration(low)+'～'+duration(high);
+        summary.textContent='预计记录等待：约 '+range(estimate.low,estimate.high)+' · 至多 '+estimate.count+' 张快照 · '+
+            (estimate.calibrated ? estimate.calibrated+'/'+activeKeys().length+' 个模型已实测校准' : '首次粗估，误差可能较大');
+        estimate.tracks.forEach(track=>{
+            const span=document.createElement('span');
+            span.textContent=names[track.key]+'：'+track.count+' 步 · '+range(track.low,track.high)+(track.calibrated?'（实测校准）':'（粗估）');
+            models.append(span);
+        });
+        note.textContent+=' 各模型按自身上限停止；SVM / L-BFGS 每步独立求解，耗时可能非线性增长。'+
+            (estimate.calibrated?'外推与机器负载仍可能造成较大误差。':'完成一次记录后，同一数据与参数会自动使用本机实测校准。');
+    }
     async function recordPlayback() {
         if(state.busy || !state.valid || !state.parametersReady || !state.parametersValid)return;
         const steps=numeric('play-steps');
-        if(!Number.isInteger(steps)||steps<1||steps>200){status('连续演示步数需为 1～200 的整数；更大步数仍可使用单步观察。','error');return;}
+        if(!Number.isInteger(steps)||steps<1||steps>1000){status('连续演示步数需为 1～1000 的整数；更大步数仍可使用单步观察。','error');return;}
         if(!$('play-speed').checkValidity()){status('请先修正速度倍率。','error');return;}
         leavePlayback();
         const seq=++state.sequence,version=state.version;
         state.busy=state.recording=true;state.controller=new AbortController();
         $('play-state').textContent='正在实测并记录，准备阶段不计入播放等待';
         status('正在记录 '+activeKeys().length+' 个参赛模型前 '+steps+' 步的实际操作耗时与边界，完成后开始回放；可取消。','busy');buttonState();
+        const input=payload();
         try {
-            const record=await api('timeline',{...payload(),steps},state.controller.signal);
+            const record=await api('timeline',{...input,steps},state.controller.signal);
             if(seq!==state.sequence||version!==state.version)return;
+            record.model_keys.forEach(key=>{
+                const track=record.tracks[key];
+                if(Number.isFinite(track.recording_ms))state.recordingProfiles[key]={signature:recordingSignature(key,input),track:{
+                    recording_ms:track.recording_ms,setup_ms:track.setup_ms,complete:track.complete,
+                    frames:track.frames.map(frame=>({duration_ms:frame.duration_ms}))
+                }};
+            });
             state.busy=state.recording=false;state.controller=null;
             beginPlayback(record);
         } catch(error) {
@@ -712,7 +761,7 @@
             const model = result.models[key];
             if(!model){
                 $('effective-'+key).textContent='等待该算法完成第 1 步。';
-                $('rank-'+key).textContent='准备中';delete $('rank-'+key).dataset.rank;
+                $('rank-'+key).textContent='第一步进行中';delete $('rank-'+key).dataset.rank;
                 $('score-'+key).innerHTML='<strong>—<small>等待真实阶段</small></strong><span>实测时间尚未到达第 1 步</span>';
                 $('process-'+key).hidden=true;return;
             }
@@ -732,7 +781,7 @@
         names.mlp = result.models.mlp?.fit_info.network_type === 'perceptron' ? '单层感知机' : 'MLP';
         $('metrics-body').innerHTML = activeKeys().map(key => {
             const m = result.models[key];
-            if(!m)return '<tr><td>'+names[key]+'</td><td colspan="7">准备中 · 尚无完成的阶段结果</td></tr>';
+            if(!m)return '<tr><td>'+names[key]+'</td><td colspan="7">第一步进行中 · 尚无完成的阶段结果</td></tr>';
             return '<tr><td>' + names[key] + '</td><td>' + fmt(m.train.accuracy) +
                 '</td><td>' + fmt(m.test.accuracy) + '</td><td>' + fmt(m.test.precision) +
                 '</td><td>' + fmt(m.test.recall) + '</td><td>' + fmt(m.test.f1) +
@@ -1109,6 +1158,7 @@
     $('data-collapse').addEventListener('click',showSixCanvases);
     $('fit-canvases').addEventListener('click',showSixCanvases);
     $('play-record').addEventListener('click',recordPlayback);
+    $('play-steps').addEventListener('input',updateRecordingEstimate);
     $('play-pause').addEventListener('click',()=>{
         const playback=state.playback;if(!playback?.active || state.busy)return;
         if(playback.clock.playing){playback.clock.pause(performance.now());cancelAnimationFrame(playback.raf);}
@@ -1225,7 +1275,7 @@
                 duration_ms:state.playback.record.tracks[key].duration_ms,
                 frames:state.playback.record.tracks[key].frames.map(f=>({step:f.step,duration_ms:f.duration_ms,elapsed_ms:f.elapsed_ms}))
             }]))
-        } : null, recording:state.recording,
+        } : null, recording:state.recording, recordingEstimate:clone(state.recordingEstimate),
         expandedData:activeKeys().filter(key=>$('model-data-'+key).open), selectedModels:activeKeys()
     })};
     participantControls();buttonState();

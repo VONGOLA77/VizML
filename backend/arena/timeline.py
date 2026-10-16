@@ -11,11 +11,12 @@ from threadpoolctl import threadpool_limits
 from .engine import BOUNDS, GRID_SIZE, models_for, number, prepare, selected_model_keys
 from .observation import TreePrefixClassifier, describe_stage
 
-MAX_TIMELINE_STEPS = 200
+MAX_TIMELINE_STEPS = 1000
 
 
 def record_timeline(payload):
     limit = number(payload.get("steps", 50), "连续演示步数", 1, MAX_TIMELINE_STEPS, True)
+    recording_start = perf_counter()
     data, X, y, train, test = prepare(payload)
     model_keys = selected_model_keys(payload)
     if "bayes" in model_keys and np.max(np.var(X[train], axis=0)) == 0:
@@ -32,6 +33,7 @@ def record_timeline(payload):
                             "independent_tracks": True, "ranked": False})
     with threadpool_limits(limits=1):
         for key, model in models.items():
+            track_start = perf_counter()
             p = model._arena_parameters
             raw = model.steps[-1][1] if hasattr(model, "steps") else model
             scaler = model.steps[0][1] if hasattr(model, "steps") else None
@@ -135,6 +137,9 @@ def record_timeline(payload):
                 track["frames"].append(dict(step=count, duration_ms=duration, elapsed_ms=elapsed, model=encoded))
             track["duration_ms"] = elapsed
             track["complete"] = track["frames"][-1]["model"]["observation"]["complete"]
+            # Wall-clock recording includes predictions/encoding, unlike replay.
+            track["recording_ms"] = (perf_counter() - track_start) * 1000
             result["tracks"][key] = track
     result["timeline"]["duration_ms"] = max(t["duration_ms"] for t in result["tracks"].values())
+    result["timeline"]["recording_ms"] = (perf_counter() - recording_start) * 1000
     return result

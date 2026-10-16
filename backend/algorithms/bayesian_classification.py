@@ -10,7 +10,6 @@ import logging
 import warnings
 
 from .base import BaseClassificationAlgorithm
-from backend.model_parameters import create_classifier
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +81,7 @@ class BayesianClassificationAlgorithm(BaseClassificationAlgorithm):
             X_train, X_test = self.scale_features(X_train, X_test)
         
         # 创建高斯朴素贝叶斯模型
-        model = create_classifier("bayes", dict(var_smoothing=var_smoothing, priors=priors))
+        model = GaussianNB(var_smoothing=var_smoothing, priors=priors)
         
         # 训练模型
         model.fit(X_train, y_train)

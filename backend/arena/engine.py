@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from threadpoolctl import threadpool_limits
-from backend.model_parameters import normalize_parameters, create_classifier, active, PARAMETERS
+from .parameters import normalize_parameters, create_classifier, active, PARAMETERS
 
 BOUNDS = [-3.0, 3.0, -3.0, 3.0]
 GRID_SIZE = 120

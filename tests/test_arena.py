@@ -226,12 +226,16 @@ class ArenaApiTests(unittest.TestCase):
         cls.client = app.test_client()
 
     def test_homepage_keeps_labs_and_replaces_old_module(self):
-        response = self.client.get("/")
-        html = response.get_data(as_text=True)
-        response.close()
-        self.assertIn('id="ml-arena"', html)
-        self.assertIn('/html/linear_regression.html', html)
-        self.assertNotIn("forge", html.lower())
+        for route in ('/', '/html/index.html'):
+            with self.subTest(route=route):
+                response = self.client.get(route)
+                html = response.get_data(as_text=True)
+                response.close()
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(html.count('id="ml-arena"'), 1)
+                self.assertIn('/html/linear_regression.html', html)
+                self.assertNotIn("{% include", html)
+                self.assertNotIn("forge", html.lower())
         self.assertEqual(self.client.post("/api/ai-forge/run", json={}).status_code, 404)
 
     def test_api_success_and_validation(self):
